@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  # FastAPI application
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: university-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    env_file:
+      - docker/.env
+    depends_on:
+      - postgres
+      - mongodb
+      - rabbitmq
+    networks:
+      - app-network
+
+  # React frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: university-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+  # PostgreSQL database
+  postgres:
+    image: postgres:13
+    container_name: university-postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    env_file:
+      - docker/.env
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-university_app}
+    ports:
+      - "5433:5432"
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB database for file storage
+  mongodb:
+    image: mongo:5
+    container_name: university-mongodb
+    volumes:
+      - mongodb_data:/data/db
+    env_file:
+      - docker/.env
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER:-root}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:-example}
+    ports:
+      - "27017:27017"
+    networks:
+      - app-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongo localhost:27017/test --quiet
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # RabbitMQ for asynchronous tasks
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: university-rabbitmq
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    env_file:
+      - docker/.env
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-guest}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:-guest}
+    ports:
+      - "5672:5672"   # AMQP protocol port
+      - "15672:15672" # Management UI
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  postgres_data:
+  mongodb_data:
+  rabbitmq_data:
+
+networks:
+  app-network:
+    driver: bridge 
