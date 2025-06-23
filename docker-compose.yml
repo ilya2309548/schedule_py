@@ -101,8 +101,8 @@ services:
 volumes:
   postgres_data:
   mongodb_data:
-    rabbitmq_data:
+  rabbitmq_data:
 
-  networks:
-    app-network:
-      driver: bridge 
+networks:
+  app-network:
+    driver: bridge 
