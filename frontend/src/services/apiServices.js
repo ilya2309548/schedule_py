@@ -32,6 +32,36 @@ export const scheduleService = {
     } catch (error) {
       throw error.response?.data || { detail: 'Failed to fetch schedule for group' };
     }
+  },
+  
+  // Create schedule entry
+  createSchedule: async (scheduleData) => {
+    try {
+      const response = await axios.post(`${API_URL}/schedule`, scheduleData);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to create schedule entry' };
+    }
+  },
+  
+  // Update schedule entry
+  updateSchedule: async (scheduleId, scheduleData) => {
+    try {
+      const response = await axios.put(`${API_URL}/schedule/${scheduleId}`, scheduleData);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to update schedule entry' };
+    }
+  },
+  
+  // Delete schedule entry
+  deleteSchedule: async (scheduleId) => {
+    try {
+      await axios.delete(`${API_URL}/schedule/${scheduleId}`);
+      return true;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to delete schedule entry' };
+    }
   }
 };
 

@@ -216,10 +216,10 @@ async def update_schedule(
 )
 async def delete_schedule(
     schedule_id: str,
-    current_user: User = Depends(admin_required),
+    current_user: User = Depends(teacher_required),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a schedule entry (admin only)."""
+    """Delete a schedule entry (teacher or admin only)."""
     # Get the schedule
     stmt = select(Schedule).where(Schedule.id == schedule_id)
     result = await db.execute(stmt)
@@ -228,6 +228,16 @@ async def delete_schedule(
     if not db_schedule:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Schedule not found"
+        )
+
+    # Check if the user is the teacher of this schedule or an admin
+    if (
+        current_user.role != UserRole.ADMIN
+        and db_schedule.teacher_id != current_user.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete your own schedule entries",
         )
 
     # Delete the schedule
