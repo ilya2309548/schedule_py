@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { FiUser, FiUsers, FiFileText, FiCalendar, FiPlus, FiEdit, FiTrash2 } from 'react-icons/fi';
+import { FiUser, FiUsers, FiFileText, FiCalendar, FiPlus, FiEdit, FiTrash2, FiDownload, FiUpload, FiX } from 'react-icons/fi';
 import { COLORS } from '../styles/GlobalStyles';
 import { assignmentsService, groupsService } from '../services/apiServices';
 
@@ -287,6 +287,98 @@ const InfoMessage = styled.div`
   font-size: 14px;
 `;
 
+// File upload styles
+const FileUploadArea = styled.div`
+  border: 2px dashed ${COLORS.light};
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  margin-bottom: 16px;
+  transition: border-color 0.2s;
+  cursor: pointer;
+  
+  &:hover {
+    border-color: ${COLORS.primary};
+  }
+  
+  &.drag-over {
+    border-color: ${COLORS.primary};
+    background-color: ${COLORS.gray};
+  }
+`;
+
+const FileInput = styled.input`
+  display: none;
+`;
+
+const FileUploadText = styled.p`
+  color: ${COLORS.textSecondary};
+  margin: 0;
+  font-size: 14px;
+`;
+
+const FileList = styled.div`
+  margin-top: 16px;
+`;
+
+const FileItem = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background-color: ${COLORS.gray};
+  border-radius: 6px;
+  margin-bottom: 8px;
+`;
+
+const FileInfo = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+`;
+
+const FileName = styled.span`
+  color: ${COLORS.text};
+  font-size: 14px;
+  font-weight: 500;
+`;
+
+const FileActions = styled.div`
+  display: flex;
+  gap: 8px;
+`;
+
+const FileButton = styled.button`
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: ${COLORS.textSecondary};
+  display: flex;
+  align-items: center;
+  
+  &:hover {
+    color: ${props => props.danger ? COLORS.danger : COLORS.primary};
+  }
+`;
+
+const UploadProgress = styled.div`
+  width: 100%;
+  height: 4px;
+  background-color: ${COLORS.light};
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 8px;
+`;
+
+const ProgressBar = styled.div`
+  height: 100%;
+  background-color: ${COLORS.primary};
+  width: ${props => props.progress}%;
+  transition: width 0.3s ease;
+`;
+
 const Assignments = () => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -308,6 +400,11 @@ const Assignments = () => {
     teacher_name: ''
   });
   const [groups, setGroups] = useState([]);
+  
+  // File upload states
+  const [uploadingFiles, setUploadingFiles] = useState({});
+  const [uploadProgress, setUploadProgress] = useState({});
+  const [dragOver, setDragOver] = useState(false);
   
   // Effect to load user data when component mounts
   useEffect(() => {
@@ -674,7 +771,97 @@ const Assignments = () => {
     setSelectedAssignment(assignment);
     setShowDetailsModal(true);
   };
-  
+
+  // File handling functions
+  const handleFileUpload = async (assignmentId, files) => {
+    const fileArray = Array.from(files);
+    
+    for (const file of fileArray) {
+      try {
+        setUploadingFiles(prev => ({ ...prev, [file.name]: true }));
+        setUploadProgress(prev => ({ ...prev, [file.name]: 0 }));
+        
+        // Simulate upload progress
+        const progressInterval = setInterval(() => {
+          setUploadProgress(prev => {
+            const current = prev[file.name] || 0;
+            if (current >= 90) {
+              clearInterval(progressInterval);
+              return prev;
+            }
+            return { ...prev, [file.name]: current + 10 };
+          });
+        }, 100);
+        
+        await assignmentsService.uploadFile(assignmentId, file);
+        
+        clearInterval(progressInterval);
+        setUploadProgress(prev => ({ ...prev, [file.name]: 100 }));
+        
+        // Refresh assignments to show new files
+        setTimeout(() => {
+          fetchAssignments();
+          setUploadingFiles(prev => ({ ...prev, [file.name]: false }));
+          setUploadProgress(prev => ({ ...prev, [file.name]: 0 }));
+        }, 500);
+        
+      } catch (error) {
+        console.error('Error uploading file:', error);
+        setUploadingFiles(prev => ({ ...prev, [file.name]: false }));
+        setUploadProgress(prev => ({ ...prev, [file.name]: 0 }));
+        alert(`Ошибка при загрузке файла ${file.name}: ${error.detail || 'Неизвестная ошибка'}`);
+      }
+    }
+  };
+
+  const handleFileDownload = async (fileId, filename) => {
+    try {
+      const blob = await assignmentsService.downloadFile(fileId);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      alert(`Ошибка при скачивании файла: ${error.detail || 'Неизвестная ошибка'}`);
+    }
+  };
+
+  const handleFileDelete = async (assignmentId, fileId, filename) => {
+    if (window.confirm(`Удалить файл "${filename}"?`)) {
+      try {
+        await assignmentsService.deleteFile(assignmentId, fileId);
+        fetchAssignments(); // Refresh to update file list
+      } catch (error) {
+        console.error('Error deleting file:', error);
+        alert(`Ошибка при удалении файла: ${error.detail || 'Неизвестная ошибка'}`);
+      }
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+  };
+
+  const handleDrop = (e, assignmentId) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFileUpload(assignmentId, files);
+    }
+  };
+
   return (
     <AssignmentsContainer>
       <AssignmentsHeader>
@@ -731,6 +918,80 @@ const Assignments = () => {
               <AssignmentDescription>
                 {assignment.description}
               </AssignmentDescription>
+              
+              {/* File attachments section */}
+              {assignment.file_ids && assignment.file_ids.length > 0 && (
+                <div style={{ marginBottom: '16px' }}>
+                  <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', color: COLORS.textSecondary }}>
+                    Прикрепленные файлы:
+                  </h4>
+                  <FileList>
+                    {assignment.file_ids.map((fileId, index) => (
+                      <FileItem key={fileId}>
+                        <FileInfo>
+                          <FiFileText />
+                          <FileName>Файл {index + 1}</FileName>
+                        </FileInfo>
+                        <FileActions>
+                          <FileButton
+                            onClick={() => handleFileDownload(fileId, `file_${index + 1}`)}
+                            title="Скачать файл"
+                          >
+                            <FiDownload />
+                          </FileButton>
+                          {userRole && userRole.toUpperCase() === 'TEACHER' && (
+                            <FileButton
+                              danger
+                              onClick={() => handleFileDelete(assignment.id, fileId, `file_${index + 1}`)}
+                              title="Удалить файл"
+                            >
+                              <FiX />
+                            </FileButton>
+                          )}
+                        </FileActions>
+                      </FileItem>
+                    ))}
+                  </FileList>
+                </div>
+              )}
+              
+              {/* File upload area for teachers */}
+              {userRole && userRole.toUpperCase() === 'TEACHER' && (
+                <div style={{ marginBottom: '16px' }}>
+                  <FileUploadArea
+                    className={dragOver ? 'drag-over' : ''}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, assignment.id)}
+                    onClick={() => document.getElementById(`file-input-${assignment.id}`).click()}
+                  >
+                    <FiUpload style={{ fontSize: '24px', marginBottom: '8px', color: COLORS.primary }} />
+                    <FileUploadText>
+                      Перетащите файлы сюда или нажмите для выбора
+                    </FileUploadText>
+                    <FileInput
+                      id={`file-input-${assignment.id}`}
+                      type="file"
+                      multiple
+                      onChange={(e) => handleFileUpload(assignment.id, e.target.files)}
+                    />
+                  </FileUploadArea>
+                  
+                  {/* Upload progress */}
+                  {Object.keys(uploadingFiles).map(filename => (
+                    uploadingFiles[filename] && (
+                      <div key={filename} style={{ marginTop: '8px' }}>
+                        <div style={{ fontSize: '12px', color: COLORS.textSecondary, marginBottom: '4px' }}>
+                          Загрузка: {filename}
+                        </div>
+                        <UploadProgress>
+                          <ProgressBar progress={uploadProgress[filename] || 0} />
+                        </UploadProgress>
+                      </div>
+                    )
+                  ))}
+                </div>
+              )}
               
               {userRole && userRole.toUpperCase() === 'TEACHER' ? (
                 <AssignmentActions>
@@ -910,6 +1171,31 @@ const Assignments = () => {
                   {selectedAssignment.description}
                 </p>
               </div>
+              
+              {/* File attachments for students */}
+              {selectedAssignment.file_ids && selectedAssignment.file_ids.length > 0 && (
+                <div style={{ marginTop: '20px' }}>
+                  <strong>Прикрепленные файлы:</strong>
+                  <FileList>
+                    {selectedAssignment.file_ids.map((fileId, index) => (
+                      <FileItem key={fileId}>
+                        <FileInfo>
+                          <FiFileText />
+                          <FileName>Файл {index + 1}</FileName>
+                        </FileInfo>
+                        <FileActions>
+                          <FileButton
+                            onClick={() => handleFileDownload(fileId, `file_${index + 1}`)}
+                            title="Скачать файл"
+                          >
+                            <FiDownload />
+                          </FileButton>
+                        </FileActions>
+                      </FileItem>
+                    ))}
+                  </FileList>
+                </div>
+              )}
               
               <div style={{ marginTop: '30px', textAlign: 'center' }}>
                 <SubmitButton onClick={() => setShowDetailsModal(false)}>

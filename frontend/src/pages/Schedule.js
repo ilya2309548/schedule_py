@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { FiCalendar, FiClock, FiMapPin, FiUser, FiUsers } from 'react-icons/fi';
+import { FiCalendar, FiClock, FiMapPin, FiUser, FiUsers, FiPlus, FiTrash2, FiEdit } from 'react-icons/fi';
 import { COLORS } from '../styles/GlobalStyles';
-import { scheduleService } from '../services/apiServices';
+import { scheduleService, groupsService } from '../services/apiServices';
 
 const ScheduleContainer = styled.div`
   max-width: 1200px;
@@ -212,6 +212,155 @@ const LoadingSpinner = styled.div`
   }
 `;
 
+// Modal styles
+const ModalOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+`;
+
+const ModalContent = styled.div`
+  background-color: white;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 500px;
+  padding: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+`;
+
+const ModalHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+`;
+
+const ModalTitle = styled.h2`
+  margin: 0;
+  color: ${COLORS.text};
+`;
+
+const CloseButton = styled.button`
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: ${COLORS.textSecondary};
+  
+  &:hover {
+    color: ${COLORS.text};
+  }
+`;
+
+const FormGroup = styled.div`
+  margin-bottom: 16px;
+`;
+
+const Label = styled.label`
+  display: block;
+  margin-bottom: 8px;
+  color: ${COLORS.text};
+  font-weight: 500;
+`;
+
+const Input = styled.input`
+  width: 100%;
+  padding: 12px;
+  border: 1px solid ${COLORS.darkGray};
+  border-radius: 6px;
+  font-size: 14px;
+  
+  &:focus {
+    outline: none;
+    border-color: ${COLORS.primary};
+  }
+`;
+
+const Select = styled.select`
+  width: 100%;
+  padding: 12px;
+  border: 1px solid ${COLORS.darkGray};
+  border-radius: 6px;
+  font-size: 14px;
+  background-color: white;
+  
+  &:focus {
+    outline: none;
+    border-color: ${COLORS.primary};
+  }
+`;
+
+const SubmitButton = styled.button`
+  background-color: ${COLORS.primary};
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 12px 24px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  
+  &:hover {
+    background-color: ${COLORS.primaryDark};
+  }
+  
+  &:disabled {
+    background-color: ${COLORS.darkGray};
+    cursor: not-allowed;
+  }
+`;
+
+const CreateButton = styled.button`
+  background-color: ${COLORS.primary};
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 20px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-bottom: 16px;
+  
+  &:hover {
+    background-color: ${COLORS.primaryDark};
+  }
+`;
+
+const ClassActions = styled.div`
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+`;
+
+const ActionButton = styled.button`
+  background-color: ${props => props.danger ? COLORS.danger : COLORS.light};
+  color: ${props => props.danger ? 'white' : COLORS.text};
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  
+  &:hover {
+    background-color: ${props => props.danger ? COLORS.dangerDark : COLORS.accent};
+  }
+`;
+
 const Schedule = () => {
   const [schedule, setSchedule] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -219,6 +368,19 @@ const Schedule = () => {
   const [selectedDay, setSelectedDay] = useState('monday');
   const [activeWeek, setActiveWeek] = useState('current');
   const [userRole, setUserRole] = useState(null);
+  
+  // Modal states
+  const [showModal, setShowModal] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState(null);
+  const [groups, setGroups] = useState([]);
+  const [formData, setFormData] = useState({
+    subject: '',
+    date: '',
+    start_time: '',
+    end_time: '',
+    room: '',
+    group_id: ''
+  });
   
   // Get days of the current week
   const daysOfWeek = [
@@ -346,10 +508,126 @@ const Schedule = () => {
     }
   };
   
+  // Fetch groups for teachers
+  const fetchGroups = async () => {
+    try {
+      const data = await groupsService.getGroups();
+      setGroups(data);
+    } catch (error) {
+      console.error('Error fetching groups:', error);
+      setGroups([]);
+    }
+  };
+  
+  // Load groups when component mounts for teachers
+  useEffect(() => {
+    if (userRole && userRole.toUpperCase() === 'TEACHER') {
+      fetchGroups();
+    }
+  }, [userRole]);
+  
+  const handleCreateClick = () => {
+    setEditingSchedule(null);
+    
+    // Get the selected date
+    const selectedDayObj = days.find(
+      day => day.value === selectedDay && day.week === activeWeek
+    );
+    
+    if (selectedDayObj) {
+      const dateParts = selectedDayObj.date.split('.');
+      const currentYear = new Date().getFullYear();
+      const selectedDate = `${currentYear}-${dateParts[1]}-${dateParts[0]}`;
+      
+      setFormData({
+        subject: '',
+        date: selectedDate,
+        start_time: '',
+        end_time: '',
+        room: '',
+        group_id: ''
+      });
+    }
+    
+    setShowModal(true);
+  };
+  
+  const handleEditClick = (scheduleItem) => {
+    setEditingSchedule(scheduleItem);
+    
+    // Convert date to YYYY-MM-DD format
+    const dateParts = scheduleItem.date.split('.');
+    const currentYear = new Date().getFullYear();
+    const formattedDate = `${currentYear}-${dateParts[1]}-${dateParts[0]}`;
+    
+    setFormData({
+      subject: scheduleItem.subject,
+      date: formattedDate,
+      start_time: scheduleItem.start_time,
+      end_time: scheduleItem.end_time,
+      room: scheduleItem.room,
+      group_id: scheduleItem.group_id
+    });
+    
+    setShowModal(true);
+  };
+  
+  const handleDeleteClick = async (scheduleId) => {
+    if (window.confirm('Вы уверены, что хотите удалить эту пару?')) {
+      try {
+        await scheduleService.deleteSchedule(scheduleId);
+        fetchSchedule(); // Refresh schedule
+      } catch (error) {
+        console.error('Error deleting schedule:', error);
+        alert(`Ошибка при удалении пары: ${error.detail || 'Неизвестная ошибка'}`);
+      }
+    }
+  };
+  
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    try {
+      // Get current user info
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      
+      const scheduleData = {
+        ...formData,
+        teacher_id: user.id
+      };
+      
+      if (editingSchedule) {
+        await scheduleService.updateSchedule(editingSchedule.id, scheduleData);
+      } else {
+        await scheduleService.createSchedule(scheduleData);
+      }
+      
+      setShowModal(false);
+      fetchSchedule(); // Refresh schedule
+    } catch (error) {
+      console.error('Error saving schedule:', error);
+      alert(`Ошибка при сохранении пары: ${error.detail || 'Неизвестная ошибка'}`);
+    }
+  };
+  
   return (
     <ScheduleContainer>
       <ScheduleHeader>
         <Title>Расписание занятий</Title>
+        {userRole && userRole.toUpperCase() === 'TEACHER' && (
+          <CreateButton onClick={handleCreateClick}>
+            <FiPlus />
+            Добавить пару
+          </CreateButton>
+        )}
       </ScheduleHeader>
       
       <WeekNavigation>
@@ -439,10 +717,122 @@ const Schedule = () => {
                     {classItem.start_time} - {classItem.end_time}
                   </InfoItem>
                 </ClassInfo>
+                
+                {/* Action buttons for teachers */}
+                {userRole && userRole.toUpperCase() === 'TEACHER' && (
+                  <ClassActions>
+                    <ActionButton onClick={() => handleEditClick(classItem)}>
+                      <FiEdit />
+                      Изменить
+                    </ActionButton>
+                    <ActionButton danger onClick={() => handleDeleteClick(classItem.id)}>
+                      <FiTrash2 />
+                      Удалить
+                    </ActionButton>
+                  </ClassActions>
+                )}
               </ClassDetails>
             </ClassCard>
           ))}
         </ScheduleGrid>
+      )}
+      
+      {/* Create/Edit Modal */}
+      {showModal && (
+        <ModalOverlay>
+          <ModalContent>
+            <ModalHeader>
+              <ModalTitle>
+                {editingSchedule ? 'Редактировать пару' : 'Добавить новую пару'}
+              </ModalTitle>
+              <CloseButton onClick={() => setShowModal(false)}>&times;</CloseButton>
+            </ModalHeader>
+            
+            <form onSubmit={handleSubmit}>
+              <FormGroup>
+                <Label htmlFor="subject">Предмет</Label>
+                <Input
+                  id="subject"
+                  name="subject"
+                  value={formData.subject}
+                  onChange={handleInputChange}
+                  placeholder="Введите название предмета"
+                  required
+                />
+              </FormGroup>
+              
+              <FormGroup>
+                <Label htmlFor="date">Дата</Label>
+                <Input
+                  id="date"
+                  name="date"
+                  type="date"
+                  value={formData.date}
+                  onChange={handleInputChange}
+                  required
+                />
+              </FormGroup>
+              
+              <FormGroup>
+                <Label htmlFor="start_time">Время начала</Label>
+                <Input
+                  id="start_time"
+                  name="start_time"
+                  type="time"
+                  value={formData.start_time}
+                  onChange={handleInputChange}
+                  required
+                />
+              </FormGroup>
+              
+              <FormGroup>
+                <Label htmlFor="end_time">Время окончания</Label>
+                <Input
+                  id="end_time"
+                  name="end_time"
+                  type="time"
+                  value={formData.end_time}
+                  onChange={handleInputChange}
+                  required
+                />
+              </FormGroup>
+              
+              <FormGroup>
+                <Label htmlFor="room">Аудитория</Label>
+                <Input
+                  id="room"
+                  name="room"
+                  value={formData.room}
+                  onChange={handleInputChange}
+                  placeholder="Введите номер аудитории"
+                  required
+                />
+              </FormGroup>
+              
+              <FormGroup>
+                <Label htmlFor="group_id">Группа</Label>
+                <Select
+                  id="group_id"
+                  name="group_id"
+                  value={formData.group_id}
+                  onChange={handleInputChange}
+                  required
+                >
+                  <option value="">Выберите группу</option>
+                  {groups.map(group => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </Select>
+              </FormGroup>
+              
+              <SubmitButton type="submit">
+                {editingSchedule ? 'Сохранить изменения' : 'Добавить пару'}
+              </SubmitButton>
+            </form>
+          </ModalContent>
+        </ModalOverlay>
       )}
     </ScheduleContainer>
   );

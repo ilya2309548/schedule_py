@@ -348,10 +348,6 @@ const Attendance = () => {
       {error && <Alert variant="danger">{error}</Alert>}
       {successMessage && <Alert variant="success">{successMessage}</Alert>}
       
-      <div className="alert alert-warning">
-        Content test - if you see this, rendering is working
-      </div>
-      
       <Tabs 
         key={tabsKey}
         activeKey={activeTab} 

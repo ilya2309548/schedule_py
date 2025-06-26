@@ -32,6 +32,36 @@ export const scheduleService = {
     } catch (error) {
       throw error.response?.data || { detail: 'Failed to fetch schedule for group' };
     }
+  },
+  
+  // Create schedule entry
+  createSchedule: async (scheduleData) => {
+    try {
+      const response = await axios.post(`${API_URL}/schedule`, scheduleData);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to create schedule entry' };
+    }
+  },
+  
+  // Update schedule entry
+  updateSchedule: async (scheduleId, scheduleData) => {
+    try {
+      const response = await axios.put(`${API_URL}/schedule/${scheduleId}`, scheduleData);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to update schedule entry' };
+    }
+  },
+  
+  // Delete schedule entry
+  deleteSchedule: async (scheduleId) => {
+    try {
+      await axios.delete(`${API_URL}/schedule/${scheduleId}`);
+      return true;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to delete schedule entry' };
+    }
   }
 };
 
@@ -198,64 +228,64 @@ export const assignmentsService = {
       if (assignmentData.deadline) {
         // Преобразуем YYYY-MM-DD в формат ISO без указания часового пояса
         if (assignmentData.deadline.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          const dateObj = new Date(assignmentData.deadline + 'T23:59:59');
-          // Удаляем 'Z' с конца строки и информацию о часовом поясе
-          assignmentData.deadline = dateObj.toISOString().replace('Z', '');
-        }
-      } else if (assignmentData.due_date) {
-        // Если deadline не задан, но задан due_date
-        if (assignmentData.due_date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          const dateObj = new Date(assignmentData.due_date + 'T23:59:59');
-          // Удаляем 'Z' с конца строки и информацию о часовом поясе
-          assignmentData.deadline = dateObj.toISOString().replace('Z', '');
+          assignmentData.deadline = `${assignmentData.deadline}T23:59:59`;
         }
       }
-      
-      // Сохраняем копию данных перед отправкой
-      const originalData = { ...assignmentData };
-      
-      console.log('Создание задания с данными:', JSON.stringify(assignmentData, null, 2));
       
       const response = await axios.post(`${API_URL}/assignments`, assignmentData);
       
-      // Получаем ответ от сервера и подготавливаем данные для возврата
-      const newAssignment = response.data;
-      console.log('Получен ответ от сервера:', JSON.stringify(newAssignment, null, 2));
+      // Сохраняем локальные данные для нового задания
+      assignmentsService._saveLocalData(response.data.id, {
+        due_date: assignmentData.deadline,
+        teacher_name: assignmentData.teacher_name
+      });
       
-      // Проверяем, сохранились ли поля на сервере
-      const missingDeadline = !newAssignment.deadline && (originalData.deadline || originalData.due_date);
-      const missingTeacherName = !newAssignment.teacher_name && originalData.teacher_name;
-      
-      // Если какие-то поля не сохранились, сохраняем их локально
-      if (missingDeadline || missingTeacherName) {
-        const localData = {};
-        
-        if (missingDeadline) {
-          localData.due_date = originalData.deadline || originalData.due_date;
-          console.log('Сохраняем дедлайн локально:', localData.due_date);
-        }
-        
-        if (missingTeacherName) {
-          localData.teacher_name = originalData.teacher_name;
-          console.log('Сохраняем имя преподавателя локально:', originalData.teacher_name);
-        }
-        
-        // Сохраняем локальные данные только после получения ID задания
-        if (newAssignment.id) {
-          assignmentsService._saveLocalData(newAssignment.id, localData);
-          
-          // Объединяем данные с сервера и локальные данные
-          return {
-            ...newAssignment,
-            ...localData
-          };
-        }
-      }
-      
-      return newAssignment;
+      return response.data;
     } catch (error) {
-      console.error('Error creating assignment:', error);
       throw error.response?.data || { detail: 'Failed to create assignment' };
+    }
+  },
+  
+  // Upload file to assignment
+  uploadFile: async (assignmentId, file) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await axios.post(
+        `${API_URL}/assignments/${assignmentId}/files`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to upload file' };
+    }
+  },
+  
+  // Download file
+  downloadFile: async (fileId) => {
+    try {
+      const response = await axios.get(`${API_URL}/files/${fileId}`, {
+        responseType: 'blob',
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to download file' };
+    }
+  },
+  
+  // Delete file from assignment
+  deleteFile: async (assignmentId, fileId) => {
+    try {
+      await axios.delete(`${API_URL}/assignments/${assignmentId}/files/${fileId}`);
+      return true;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to delete file' };
     }
   },
   
